@@ -1,126 +1,126 @@
-AssetFlow Enterprise Asset & Resource Management System
+# AssetFlow — Backend
 
-AssetFlow is a web-based Enterprise Asset & Resource Management System designed to help organizations efficiently manage, track, allocate, and maintain their assets throughout their lifecycle.
+Node.js + Express + MySQL + JWT backend for the AssetFlow frontend (HTML/CSS/JS).
+Every module matches the screens already built: Departments, Categories, Employees,
+Assets, Allocations, Transfers, Bookings, Maintenance, Audits, Notifications, Reports.
 
-The platform provides centralized asset monitoring, employee asset allocation, maintenance tracking, and analytics to improve operational efficiency and resource utilization.
+## 1. Install
 
----
+```bash
+cd backend
+npm install
+```
 
-Problem Statement
+## 2. Configure
 
-Organizations often face challenges in managing assets such as laptops, printers, vehicles, machinery, and other resources due to manual tracking, poor visibility, and inefficient maintenance processes.
+```bash
+cp .env.example .env
+# edit .env with your MySQL password and a real JWT_SECRET
+```
 
-AssetFlow addresses these challenges by providing a centralized platform for asset tracking, maintenance scheduling, utilization monitoring, and lifecycle management.
+## 3. Create the database
 
----
+```bash
+mysql -u root -p < db/schema.sql
+```
 
-Features
+## 4. Seed demo data (same accounts as the frontend's demo logins)
 
-Asset Registration
+```bash
+npm run seed
+```
 
-- Add and manage enterprise assets.
-- Store asset information such as asset ID, category, purchase date, location, and status.
+This creates:
+| Role | Email | Password |
+|---|---|---|
+| Admin | admin@assetflow.com | admin123 |
+| Asset Manager | raj.verma@company.com | demo123 |
+| Dept Head | aditi.rao@company.com | demo123 |
+| Employee | priya.shah@company.com | demo123 |
 
-Asset Allocation
+## 5. Run
 
-- Assign assets to employees or departments.
-- Track ownership and usage history.
+```bash
+npm run dev     # nodemon, auto-restart
+npm start       # plain node
+```
 
-Maintenance Management
+API is at `http://localhost:5000/api`. Health check: `GET /api/health`.
 
-- Schedule maintenance activities.
-- Maintain service and repair records.
-- Receive maintenance alerts.
+## 6. Test with Postman
 
-Asset Lifecycle Tracking
+Import `postman/AssetFlow.postman_collection.json`. Run **Auth → Login** first —
+it auto-saves the JWT into the collection's `token` variable, which every other
+request sends as `Authorization: Bearer {{token}}`.
 
-- Monitor assets from acquisition to retirement.
-- Keep a complete history of asset activities.
+## Folder structure
 
-QR Code Asset Tracking
+```
+backend/
+  server.js               entry point, mounts all routes
+  config/db.js             mysql2 connection pool
+  middleware/
+    auth.js                 requireAuth (JWT) + requireRole (RBAC)
+    errorHandler.js          centralized error responses
+  utils/
+    jwt.js                   sign/verify helpers
+    uid.js                    short id generator (matches frontend's uid())
+    activity.js               writes activity_log + notifications rows
+  routes/                   one file per resource, thin — just wiring
+  controllers/              one file per resource — the actual logic
+  db/
+    schema.sql               full MySQL schema
+    seed.js                   loads demo data (hashed passwords)
+  postman/
+    AssetFlow.postman_collection.json
+```
 
-- Generate QR codes for assets.
-- Instantly access asset information through scanning.
+## Auth model
 
-Asset Health Score
+- `POST /api/auth/signup` — always creates an **Employee** role account (role
+  promotion happens only via `PUT /api/employees/:id/role`, Admin-only — mirrors
+  the frontend's "Editing a department... Role promotion happens only here" rule).
+- `POST /api/auth/login` — returns `{ token, user }`.
+- Every other route requires `Authorization: Bearer <token>`.
+- `requireRole(...)` middleware enforces the same role matrix as the frontend's
+  `NAV` config (Admin / AssetManager / DeptHead / Employee).
 
-- Evaluate asset condition based on maintenance and usage history.
-- Identify assets that may require replacement or servicing.
+## Endpoints (all prefixed `/api`)
 
-Resource Utilization Dashboard
+| Resource | Routes |
+|---|---|
+| auth | `POST /auth/signup`, `POST /auth/login`, `GET /auth/me` |
+| departments | `GET /`, `GET /:id`, `POST /`, `PUT /:id`, `DELETE /:id` |
+| categories | `GET /`, `POST /`, `PUT /:id`, `DELETE /:id` |
+| employees | `GET /`, `GET /:id`, `PUT /:id/role`, `PUT /:id/status`, `PUT /:id/department` |
+| assets | `GET /?q=&status=&category=`, `GET /:id`, `POST /`, `PUT /:id`, `PUT /:id/status`, `DELETE /:id` |
+| allocations | `GET /`, `POST /`, `PUT /:id/return` |
+| transfers | `GET /`, `POST /`, `PUT /:id/decision` |
+| bookings | `GET /?assetId=&date=`, `POST /` (conflict-checked), `PUT /:id/cancel` |
+| maintenance | `GET /`, `POST /`, `PUT /:id/status` (kanban) |
+| audits | `GET /`, `POST /`, `PUT /items/:itemId`, `PUT /:id/close` |
+| notifications | `GET /`, `PUT /read-all`, `PUT /:id/read` |
+| reports | `GET /dashboard`, `GET /activity`, `GET /assets.csv` |
 
-- Monitor asset usage.
-- Identify underutilized and overutilized resources.
+## Business rules carried over from the frontend logic
 
-Reports & Analytics
+- Registering an asset auto-generates the next `AF-00xx` tag.
+- Allocating an asset fails with `409` if it isn't `Available`; on success the
+  asset flips to `Allocated`. Marking a return flips it back to `Available`.
+- Approving a transfer closes the old allocation and opens a new one to the
+  new holder, in a single DB transaction.
+- Booking a non-bookable asset is rejected; overlapping time windows on the
+  same asset are rejected with `409`.
+- Moving a maintenance ticket to `Approved/TechnicianAssigned/InProgress` sets
+  the asset to `UnderMaintenance`; `Resolved` sets it back to `Available`.
+- Closing an audit cycle flags any `Missing` item's asset as `Lost`.
+- Every mutating action writes a row to `activity_log`, and most also push a
+  `notifications` row — same as the frontend's `log()` / `notify()` helpers.
 
-- Asset status reports.
-- Department-wise asset allocation reports.
-- Maintenance and utilization insights.
+## Connecting the existing frontend
 
----
-
-Technology Stack
-
-Frontend
-
-- HTML
-- CSS
-- JavaScript
-
-Backend
-
-- Node.js
-- Express.js
-
-Database
-
-- MySQL
-
-API Testing
-
-- Postman
-
----
-
-Project Workflow
-
-1. Register enterprise assets.
-2. Allocate assets to employees or departments.
-3. Track asset status and usage.
-4. Monitor maintenance schedules and alerts.
-5. View asset health and utilization reports.
-6. Generate insights for better asset management.
-
----
-
-Benefits
-
-- Centralized asset management
-- Improved asset visibility
-- Reduced maintenance downtime
-- Better resource utilization
-- Faster asset tracking through QR codes
-- Data-driven decision making
-
----
-
-Future Enhancements
-
-- Predictive maintenance recommendations
-- Mobile application integration
-- Real-time notifications
-- Advanced analytics dashboard
-- Role-based access control
-
----
-
-Team
-
-Developed as part of the Odoo Hackathon.
-
----
-
-License
-
-This project is developed for educational and hackathon purposes.
+The current `script.js` is a self-contained in-memory demo. To wire it to this
+API, replace the in-memory `S` mutations with `fetch()` calls to these
+endpoints (store the JWT from `/auth/login` in memory/localStorage and send it
+as `Authorization: Bearer <token>` on every request). Happy to do that wiring
+next if you share how you'd like state/rendering to work with real async data.
